@@ -1,0 +1,191 @@
+// Prisma schema for MongoDB Atlas
+// Docs: https://www.prisma.io/docs/orm/overview/databases/mongodb
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  HEALTH_WORKER
+  ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum HealthMetricType {
+  BP
+  HR
+  BG
+  TEMP
+  WEIGHT
+  SPO2
+  BMI
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique
+  phone     String?  @unique
+  name      String
+  passwordHash String?
+  role      Role     @default(PATIENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations (1-1 via backrefs)
+  patientProfile      PatientProfile?
+  healthWorkerProfile HealthWorkerProfile?
+
+  @@index([role])
+}
+
+model PatientProfile {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  dob           DateTime?
+  gender        Gender?
+  address       String?
+  conditions    String[]
+  emergencyName String?
+  emergencyPhone String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Backref
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // One-to-many
+  appointments  Appointment[]
+  consultations Consultation[]
+  medications   Medication[]
+  reports       Report[]
+  metrics       HealthMetric[]
+
+}
+
+model HealthWorkerProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  department  String?
+  district    String?
+  registrationNumber String?
+  languages   String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Backref
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  appointments  Appointment[]
+  consultations Consultation[]
+
+}
+
+model Appointment {
+  id             String            @id @default(uuid()) @db.Uuid
+  patientId      String            @db.Uuid
+  healthWorkerId String?           @db.Uuid
+  datetime       DateTime
+  status         AppointmentStatus @default(SCHEDULED)
+  reason         String?
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  patient       PatientProfile      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  healthWorker  HealthWorkerProfile? @relation(fields: [healthWorkerId], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([healthWorkerId])
+  @@index([datetime])
+}
+
+model Consultation {
+  id             String   @id @default(uuid()) @db.Uuid
+  patientId      String   @db.Uuid
+  healthWorkerId String?  @db.Uuid
+  date           DateTime @default(now())
+  diagnosis      String?
+  prescription   String?
+  followUpDate   DateTime?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  patient      PatientProfile      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  healthWorker HealthWorkerProfile? @relation(fields: [healthWorkerId], references: [id], onDelete: SetNull)
+
+  @@index([patientId])
+  @@index([healthWorkerId])
+  @@index([date])
+}
+
+model Medication {
+  id        String   @id @default(uuid()) @db.Uuid
+  patientId String   @db.Uuid
+  name      String
+  dosage    String
+  frequency String
+  startDate DateTime
+  endDate   DateTime?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([active])
+}
+
+model Report {
+  id        String   @id @default(uuid()) @db.Uuid
+  patientId String   @db.Uuid
+  type      String
+  url       String
+  summary   String?
+  uploadedAt DateTime @default(now())
+
+  patient PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([uploadedAt])
+}
+
+model HealthMetric {
+  id         String           @id @default(uuid()) @db.Uuid
+  patientId  String           @db.Uuid
+  type       HealthMetricType
+  // Value shapes
+  valueNumber Float?
+  valueText   String?
+  systolic    Int?
+  diastolic   Int?
+  metadata    Json?
+  recordedAt  DateTime @default(now())
+
+  patient PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@index([type])
+  @@index([recordedAt])
+}
